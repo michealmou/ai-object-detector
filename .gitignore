@@ -10,3 +10,5 @@ __pycache__/
 
 # Captured images / training data
 dataset/
+# guides/
+guides/
