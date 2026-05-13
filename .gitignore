@@ -12,3 +12,5 @@ __pycache__/
 dataset/
 # guides/
 guides/
+# Logs
+logs/

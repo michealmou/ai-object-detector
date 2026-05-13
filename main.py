@@ -1,7 +1,11 @@
 import os
 import cv2
 import time
+import pyttsx3
+import threading
 from ultralytics import YOLO
+from voice import Voice
+from detector import detector
 from config import (
     ALLOWED_CLASSES,
     CAMERA_INDEX,
@@ -12,11 +16,12 @@ from config import (
     IMAGE_PREFIX,
     MODEL_PATH,
     WINDOW_NAME,
+    TIME,
 )
 
 model = YOLO(MODEL_PATH)
 #launch the camera and start capturing the video, camera feed should be inverted
-cap = cv2.VideoCapture(CAMERA_INDEX)
+cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
 
 
 last_seen = {}
@@ -24,14 +29,16 @@ last_seen = {}
 while True:
     ret, frame = cap.read()
     if not ret:
-        print("Failed to grab frame")
-        break
+        print("Frame lost, retrying...")
+        cap.release()
+        cap = cv2.VideoCapture(CAMERA_INDEX, cv2.CAP_DSHOW)
+        continue
 
     frame = cv2.resize(frame, (FRAME_WIDTH, FRAME_HEIGHT))
     frame = cv2.flip(frame, 1)
 
     # Run YOLO on the current frame and draw detections on the same frame window.
-    results = model(frame, verbose=False)
+    results = model(frame, verbose=False, stream=True)
 
     
     count = {}
@@ -59,6 +66,9 @@ while True:
             last_time = last_seen.get(class_name, 0)
             if current_time - last_time > COOLDOWN_TIME:
                 print(f"Detected {class_name} with confidence {confidence:.2f}")
+                d = detector(model, frame)
+                d.log_detection(class_name, confidence)
+                threading.Thread(target=Voice().speak, args=(f"{class_name} detected",)).start()
                 last_seen[class_name] = current_time
             cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 6)
             cv2.putText(frame, f"{class_name} {confidence:.2f}", (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
@@ -71,7 +81,7 @@ while True:
         if not os.path.exists(DATASET_DIR):
             os.makedirs(DATASET_DIR)
         count = len([f for f in os.listdir(DATASET_DIR) if f.lower().endswith('.jpg')]) + 1
-        file_name = f"{IMAGE_PREFIX}{count}.jpg"
+        file_name = f"{IMAGE_PREFIX}{count}{TIME}.jpg"
         cv2.imwrite(os.path.join(DATASET_DIR, file_name), frame)
         print(f"Saved {DATASET_DIR}/{file_name}")
 
