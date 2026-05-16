@@ -30,12 +30,15 @@ class Detector:
         self.last_seen['fps'] = alpha * instant_fps + (1 - alpha) * prev_fps
         self.last_seen['last_frame_time'] = now
 
-        results = self.model(frame, verbose=False, stream=True)
+        results = self.model(frame, verbose=False, stream=True, conf=0.5, iou=0.6)
 
         for r in results:
             for box in r.boxes:
                 x1, y1, x2, y2 = box.xyxy[0]
                 confidence = float(box.conf[0])
+                min_confidence = 0.5
+                if confidence < min_confidence:
+                    continue
                 class_id = int(box.cls[0])
                 class_name = self.model.names[class_id]
 
@@ -60,8 +63,6 @@ class Detector:
                     2,
                 )
 
-        fps = self.last_seen.get('fps', 0.0)
-        cv2.putText(frame, f"FPS: {fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
         return frame
 
