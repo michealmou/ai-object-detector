@@ -1,12 +1,16 @@
 import os
 import threading
 import time
-
+import logging
 import cv2
 
 from config import ALLOWED_CLASSES, COOLDOWN_TIME
 from voice import Voice
 
+# Set up logging
+logger = logging.getLogger(__name__)
+
+# Detector class to handle object detection and logging
 
 class Detector:
     def __init__(self, model):
@@ -14,6 +18,18 @@ class Detector:
         self.last_seen = {}
 
     def detect(self, frame):
+
+        # compute FPS once per frame (use separate keys for timestamp and fps)
+        
+        now = time.time()
+        last_frame_time = self.last_seen.get('last_frame_time', now)
+        frame_time = now - last_frame_time
+        instant_fps = 1 / frame_time if frame_time > 0 else 0
+        alpha = 0.1
+        prev_fps = self.last_seen.get('fps', instant_fps)
+        self.last_seen['fps'] = alpha * instant_fps + (1 - alpha) * prev_fps
+        self.last_seen['last_frame_time'] = now
+
         results = self.model(frame, verbose=False, stream=True)
 
         for r in results:
@@ -23,13 +39,12 @@ class Detector:
                 class_id = int(box.cls[0])
                 class_name = self.model.names[class_id]
 
-                current_time = time.time()
                 if class_name not in ALLOWED_CLASSES:
                     continue
-
+                current_time = time.time()
                 last_time = self.last_seen.get(class_name, 0)
                 if current_time - last_time > COOLDOWN_TIME:
-                    print(f"Detected {class_name} with confidence {confidence:.2f}")
+                    logger.info(f"Detected {class_name} with confidence {confidence:.2f}")
                     self.log_detection(class_name, confidence)
                     threading.Thread(target=Voice().speak, args=(f"{class_name} detected",)).start()
                     self.last_seen[class_name] = current_time
@@ -44,6 +59,9 @@ class Detector:
                     (0, 255, 0),
                     2,
                 )
+
+        fps = self.last_seen.get('fps', 0.0)
+        cv2.putText(frame, f"FPS: {fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
         return frame
 
